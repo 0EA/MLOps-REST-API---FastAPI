@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FastAPI · ML Inference Lab</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b1120'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%232dd4bf' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%232dd4bf'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-title">
+    <svg class="brand-icon" viewBox="0 0 48 48" aria-hidden="true">
+      <circle cx="24" cy="24" r="6" fill="#2dd4bf"/>
+      <g stroke="#5eead4" stroke-width="2.5" fill="none">
+        <ellipse cx="24" cy="12" rx="5" ry="9"/>
+        <ellipse cx="24" cy="36" rx="5" ry="9"/>
+        <ellipse cx="12" cy="24" rx="9" ry="5"/>
+        <ellipse cx="36" cy="24" rx="9" ry="5"/>
+      </g>
+    </svg>
+    <div>
+      <h1>FastAPI · ML Inference Lab</h1>
+      <p class="subtitle">Live Iris species classifier &mdash; REST API &amp; Pydantic validation demo</p>
+    </div>
+  </div>
+  <div class="topbar-links">
+    <a href="/docs" target="_blank" rel="noopener">Swagger UI</a>
+    <a href="/openapi.json" target="_blank" rel="noopener">OpenAPI schema</a>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ============ SERVICE STATUS ============ -->
+  <section class="panel status-panel" aria-labelledby="status-heading">
+    <div class="panel-header">
+      <h2 id="status-heading">Service &amp; model status</h2>
+      <button id="refresh-status-btn" class="btn btn-ghost">Refresh status</button>
+    </div>
+    <div id="status-body" class="status-strip" data-state="loading">
+      <div class="status-chip" id="chip-api">
+        <span class="dot"></span><span class="chip-label">API</span><span class="chip-value">Checking&hellip;</span>
+      </div>
+      <div class="status-chip" id="chip-model">
+        <span class="dot"></span><span class="chip-label">Model loaded</span><span class="chip-value">&ndash;</span>
+      </div>
+      <div class="status-chip" id="chip-version">
+        <span class="chip-label">Model version</span><span class="chip-value">&ndash;</span>
+      </div>
+      <div class="status-chip" id="chip-accuracy">
+        <span class="chip-label">Held-out test accuracy</span><span class="chip-value">&ndash;</span>
+      </div>
+    </div>
+    <details class="status-details">
+      <summary>Dataset &amp; accuracy details</summary>
+      <div class="status-chip wide" id="chip-dataset">
+        <span class="chip-label">Dataset / features</span><span class="chip-value">&ndash;</span>
+      </div>
+      <p class="status-note">
+        Accuracy above is measured once by <code>scripts/train.py</code> on a held-out test split
+        and is fetched live from <code>GET /model-info</code> &mdash; it is <strong>not</strong> the
+        same thing as the per-class probabilities shown for a single prediction below.
+      </p>
+    </details>
+  </section>
+
+  <!-- ============ INPUT + RESULT ============ -->
+  <section class="grid-main">
+
+    <div class="panel input-panel" aria-labelledby="input-heading">
+      <div class="panel-header">
+        <h2 id="input-heading">Flower measurements</h2>
+        <details class="inline-help">
+          <summary>Sepal vs petal?</summary>
+          <div class="help-popover">
+            <svg viewBox="0 0 220 140" aria-hidden="true">
+              <g stroke="#2dd4bf" stroke-width="2" fill="rgba(45,212,191,0.12)">
+                <ellipse cx="60" cy="70" rx="40" ry="14" transform="rotate(-18 60 70)"/>
+                <ellipse cx="60" cy="70" rx="40" ry="14" transform="rotate(18 60 70)"/>
+              </g>
+              <g stroke="#f0abfc" stroke-width="2" fill="rgba(240,171,252,0.15)">
+                <ellipse cx="150" cy="70" rx="26" ry="10" transform="rotate(-12 150 70)"/>
+                <ellipse cx="150" cy="70" rx="26" ry="10" transform="rotate(12 150 70)"/>
+              </g>
+              <circle cx="105" cy="70" r="5" fill="#fbbf24"/>
+              <text x="60" y="30" class="svg-label teal-label" text-anchor="middle">Sepal</text>
+              <text x="150" y="112" class="svg-label pink-label" text-anchor="middle">Petal</text>
+            </svg>
+            <p>Sepals are the outer parts that enclose the bud before it opens; petals are the inner parts, typically colored, that attract pollinators. Relative size varies by species &mdash; this diagram just shows position, not scale. All four measurements below are in centimeters.</p>
+          </div>
+        </details>
+      </div>
+
+      <form id="predict-form" novalidate>
+        <div class="field-grid">
+          <label class="field">
+            <span class="field-label">Sepal length <small>(sepal_length_cm)</small></span>
+            <input type="number" id="sepal_length_cm" name="sepal_length_cm" step="0.1" min="0.01" value="5.1" required>
+          </label>
+          <label class="field">
+            <span class="field-label">Sepal width <small>(sepal_width_cm)</small></span>
+            <input type="number" id="sepal_width_cm" name="sepal_width_cm" step="0.1" min="0.01" value="3.5" required>
+          </label>
+          <label class="field">
+            <span class="field-label">Petal length <small>(petal_length_cm)</small></span>
+            <input type="number" id="petal_length_cm" name="petal_length_cm" step="0.1" min="0.01" value="1.4" required>
+          </label>
+          <label class="field">
+            <span class="field-label">Petal width <small>(petal_width_cm)</small></span>
+            <input type="number" id="petal_width_cm" name="petal_width_cm" step="0.1" min="0.01" value="0.2" required>
+          </label>
+        </div>
+
+        <div class="preset-row">
+          <span class="preset-label">Sample inputs:</span>
+          <button type="button" class="btn btn-chip" data-preset="setosa">Setosa-like</button>
+          <button type="button" class="btn btn-chip" data-preset="versicolor">Versicolor-like</button>
+          <button type="button" class="btn btn-chip" data-preset="virginica">Virginica-like</button>
+        </div>
+        <p class="preset-disclaimer">Presets are real published Iris measurements, labeled by their typical class. They are sample inputs, not guaranteed ground truth for this model's output.</p>
+
+        <div class="action-row">
+          <button type="submit" id="predict-btn" class="btn btn-primary">Predict species</button>
+          <button type="button" id="invalid-btn" class="btn btn-danger-outline">Send invalid request</button>
+        </div>
+
+        <details class="payload-preview">
+          <summary>Inspect outgoing JSON payload</summary>
+          <pre id="payload-preview-body">{}</pre>
+        </details>
+      </form>
+    </div>
+
+    <div class="panel result-panel" aria-labelledby="result-heading">
+      <div class="panel-header">
+        <h2 id="result-heading">Prediction result</h2>
+      </div>
+      <div id="result-body" class="result-body" data-state="empty">
+        <p class="placeholder">No prediction yet. Choose measurements and press <strong>Predict species</strong>.</p>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============ TABS: INSPECTOR / HISTORY ============ -->
+  <section class="panel tabs-panel">
+    <div class="tab-bar" role="tablist">
+      <button class="tab-btn active" id="tab-btn-inspector" role="tab" aria-selected="true">HTTP inspector</button>
+      <button class="tab-btn" id="tab-btn-history" role="tab" aria-selected="false">Requests from this page</button>
+    </div>
+
+    <div id="tab-inspector" class="tab-panel active" role="tabpanel">
+      <div id="inspector-body" class="inspector-empty">
+        <p class="placeholder">No request selected yet. Send a prediction to see the raw HTTP exchange here.</p>
+      </div>
+
+      <div class="flow-diagram">
+        <h3>Request flow</h3>
+        <div class="flow-steps" id="flow-steps">
+          <div class="flow-step" data-step="browser"><span class="flow-icon">1</span><span>Browser sends request</span></div>
+          <div class="flow-arrow">&rarr;</div>
+          <div class="flow-step" data-step="validation"><span class="flow-icon">2</span><span>FastAPI / Pydantic validation</span></div>
+          <div class="flow-arrow">&rarr;</div>
+          <div class="flow-step" data-step="model"><span class="flow-icon">3</span><span>ML model inference</span></div>
+          <div class="flow-arrow">&rarr;</div>
+          <div class="flow-step" data-step="response"><span class="flow-icon">4</span><span>Response returned</span></div>
+        </div>
+        <p class="flow-note">This diagram is a conceptual explanation of the request path, not an instrumented per-stage trace: the browser only observes when a request was sent and when (and how) a response came back.</p>
+      </div>
+    </div>
+
+    <div id="tab-history" class="tab-panel">
+      <div class="history-header">
+        <p class="history-caption">Showing the most recent prediction attempts made from <strong>this browser tab</strong> only &mdash; not a server-wide request log.</p>
+        <button id="clear-history-btn" class="btn btn-ghost">Clear history</button>
+      </div>
+      <div id="history-list" class="history-list">
+        <p class="placeholder">No requests yet.</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <p>Educational demo &mdash; Iris dataset, scikit-learn Pipeline, FastAPI. See <code>README.md</code> for architecture and limitations.</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
